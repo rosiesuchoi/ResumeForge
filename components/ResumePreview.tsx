@@ -1,6 +1,6 @@
 "use client";
 
-import type { Resume } from "@/lib/types";
+import type { CoachHighlight, Resume } from "@/lib/types";
 import type { ReactNode } from "react";
 
 /** Highlight [placeholders] the user still has to fill in. */
@@ -10,12 +10,29 @@ function withMarks(s: string): ReactNode {
 }
 
 /** Mirror LaTeX typography: "--" renders as an en dash, "---" as an em dash. */
-const dash = (s: string) => s.replace(/---/g, "\u2014").replace(/--/g, "\u2013");
+const dash = (s: string) => s.replace(/---/g, "—").replace(/--/g, "–");
 
 const display = (u: string) => u.replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, "");
 
-/** HTML approximation of the Jake's Resume PDF, for instant preview while editing. */
-export default function ResumePreview({ resume: r }: { resume: Resume }) {
+/**
+ * HTML approximation of the Jake's Resume PDF, for instant preview while editing.
+ * Sized in container units (see .paper in globals.css) so it keeps real US-Letter
+ * proportions and scales with its column. `highlights` (from the AI coach) paint
+ * the weakest lines yellow and the strongest green; a mark only shows while the
+ * line still reads exactly as it did when the coach looked at it.
+ */
+export default function ResumePreview({ resume: r, highlights }: { resume: Resume; highlights?: CoachHighlight[] }) {
+  const mark = (id: string, text: string, content: ReactNode): ReactNode => {
+    const h = highlights?.find((x) => x.id === id && x.text === text);
+    return h ? (
+      <span className={`hl hl-${h.kind}`} title={`${h.kind === "weak" ? "Weakest" : "Strongest"}: ${h.reason}`}>
+        {content}
+      </span>
+    ) : (
+      content
+    );
+  };
+
   const contact = [
     r.phone && <span key="p">{r.phone}</span>,
     r.location && <span key="l">{r.location}</span>,
@@ -33,11 +50,19 @@ export default function ResumePreview({ resume: r }: { resume: Resume }) {
       )),
   ].filter(Boolean);
 
-  const expLike = (title: string, items: Resume["experience"]) =>
-    items.length > 0 && (
+  const bullets = (prefix: string, items: string[]) => (
+    <ul>
+      {items.map((b, j) =>
+        b.trim() ? <li key={j}>{mark(`${prefix}.bullets.${j}`, b, withMarks(b))}</li> : null,
+      )}
+    </ul>
+  );
+
+  const expLike = (key: "experience" | "leadership", title: string) =>
+    r[key].length > 0 && (
       <>
         <div className="psec">{title}</div>
-        {items.map((x, i) => (
+        {r[key].map((x, i) => (
           <div className="pitem" key={i}>
             <div className="prow">
               <b>{x.title}</b>
@@ -47,11 +72,7 @@ export default function ResumePreview({ resume: r }: { resume: Resume }) {
               <span>{x.company}</span>
               <span>{x.location}</span>
             </div>
-            <ul>
-              {x.bullets.filter(Boolean).map((b, j) => (
-                <li key={j}>{withMarks(b)}</li>
-              ))}
-            </ul>
+            {bullets(`${key}.${i}`, x.bullets)}
           </div>
         ))}
       </>
@@ -83,11 +104,11 @@ export default function ResumePreview({ resume: r }: { resume: Resume }) {
                   <span>{e.degree}</span>
                   <span>{dash(e.dates)}</span>
                 </div>
-                {e.details.filter(Boolean).length > 0 && (
+                {e.details.some((d) => d.trim()) && (
                   <ul>
-                    {e.details.filter(Boolean).map((d, j) => (
-                      <li key={j}>{d}</li>
-                    ))}
+                    {e.details.map((d, j) =>
+                      d.trim() ? <li key={j}>{mark(`education.${i}.details.${j}`, d, d)}</li> : null,
+                    )}
                   </ul>
                 )}
               </div>
@@ -95,7 +116,7 @@ export default function ResumePreview({ resume: r }: { resume: Resume }) {
           </>
         )}
 
-        {expLike("Experience", r.experience)}
+        {expLike("experience", "Experience")}
 
         {r.projects.length > 0 && (
           <>
@@ -114,40 +135,34 @@ export default function ResumePreview({ resume: r }: { resume: Resume }) {
                   </span>
                   <span>{dash(p.dates)}</span>
                 </div>
-                <ul>
-                  {p.bullets.filter(Boolean).map((b, j) => (
-                    <li key={j}>{withMarks(b)}</li>
-                  ))}
-                </ul>
+                {bullets(`projects.${i}`, p.bullets)}
               </div>
             ))}
           </>
         )}
 
-        {expLike("Leadership & Activities", r.leadership)}
+        {expLike("leadership", "Leadership & Activities")}
 
         {r.skills.length > 0 && (
           <>
             <div className="psec">Technical Skills</div>
             <div className="pskills">
-              {r.skills
-                .filter((s) => s.category && s.items)
-                .map((s, i) => (
+              {r.skills.map((s, i) =>
+                s.category && s.items ? (
                   <div key={i}>
-                    <b>{s.category}</b>: {s.items}
+                    <b>{s.category}</b>: {mark(`skills.${i}`, s.items, s.items)}
                   </div>
-                ))}
+                ) : null,
+              )}
             </div>
           </>
         )}
 
-        {r.certifications.filter(Boolean).length > 0 && (
+        {r.certifications.some((c) => c.trim()) && (
           <>
             <div className="psec">Certifications &amp; Awards</div>
             <div className="pskills">
-              {r.certifications.filter(Boolean).map((c, i) => (
-                <div key={i}>{c}</div>
-              ))}
+              {r.certifications.map((c, i) => (c.trim() ? <div key={i}>{mark(`certifications.${i}`, c, c)}</div> : null))}
             </div>
           </>
         )}

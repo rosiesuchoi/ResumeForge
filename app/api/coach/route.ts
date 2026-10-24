@@ -1,43 +1,62 @@
-import { claude, errorResponse, HttpError, MODEL } from "@/lib/claude";
-import { CHAT_SYSTEM } from "@/lib/prompts";
+import { askStructured, errorResponse, HttpError } from "@/lib/claude";
+import { COACH_SYSTEM } from "@/lib/prompts";
+import { indexedResumeText, listLines } from "@/lib/resumeRefs";
+import { CoachReportSchema, JobAnalysisSchema, ResumeSchema, type CoachReportView } from "@/lib/types";
+import * as z from "zod/v4";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
-type Msg = { role: "user" | "assistant"; content: string };
+const Body = z.object({
+  resume: ResumeSchema,
+  job: JobAnalysisSchema.nullable().optional(),
+  company: z.string().optional(),
+  role: z.string().optional(),
+  missingKeywords: z.array(z.string()).optional(),
+});
 
-/** POST {messages, context} -> streamed plain-text reply */
+/** POST {resume, job?, company?, role?, missingKeywords?} -> CoachReportView */
 export async function POST(req: Request) {
   try {
-    const { messages, context } = (await req.json()) as { messages?: Msg[]; context?: string };
-    if (!messages?.length || messages[messages.length - 1].role !== "user") {
-      throw new HttpError(400, "Send at least one user message.");
+    const parsed = Body.safeParse(await req.json());
+    if (!parsed.success) throw new HttpError(400, "Upload a resume first.");
+    const { resume, job, company, role, missingKeywords } = parsed.data;
+    const targetCompany = company || job?.company || "";
+    const targetRole = role || job?.title || "Software Engineer (new grad / intern)";
+
+    const report = await askStructured({
+      system: COACH_SYSTEM,
+      schema: CoachReportSchema,
+      maxTokens: 8000,
+      content: [
+        {
+          type: "text",
+          text: `Target company: ${targetCompany || "(not specified - give general big-tech prep)"}
+Target role: ${targetRole}
+${job ? `<target_job>\n${JSON.stringify(job, null, 2)}\n</target_job>` : ""}
+${missingKeywords?.length ? `ATS keywords the resume is missing: ${missingKeywords.join(", ")}` : ""}
+
+<resume>
+${indexedResumeText(resume)}
+</resume>
+
+Give your coaching report.`,
+        },
+      ],
+    });
+
+    // Keep only highlights that point at a real line, once per line, and snapshot the
+    // line's text so the browser can drop the mark after that line is edited.
+    const lines = new Map(listLines(resume).map((l) => [l.id, l.text]));
+    const seen = new Set<string>();
+    const highlights: CoachReportView["highlights"] = [];
+    for (const h of report.highlights) {
+      const text = lines.get(h.id);
+      if (text === undefined || seen.has(h.id)) continue;
+      seen.add(h.id);
+      highlights.push({ ...h, text });
     }
-    const clean = messages.slice(-20).map((m) => ({ role: m.role, content: String(m.content).slice(0, 8000) }));
-
-    const stream = claude().messages.stream({
-      model: MODEL,
-      max_tokens: 2000,
-      system: `${CHAT_SYSTEM}\n\n<candidate_context>\n${(context ?? "").slice(0, 30000)}\n</candidate_context>`,
-      messages: clean,
-    });
-
-    const body = new ReadableStream<Uint8Array>({
-      async start(controller) {
-        const enc = new TextEncoder();
-        stream.on("text", (t) => controller.enqueue(enc.encode(t)));
-        try {
-          await stream.finalMessage();
-        } catch (e) {
-          controller.enqueue(enc.encode(`\n\n[Error: ${e instanceof Error ? e.message : "stream failed"}]`));
-        }
-        controller.close();
-      },
-      cancel() {
-        stream.abort();
-      },
-    });
-    return new Response(body, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
+    return Response.json({ ...report, highlights } satisfies CoachReportView);
   } catch (err) {
     return errorResponse(err);
   }

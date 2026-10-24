@@ -127,7 +127,7 @@ export default function UploadPanel({ resume, onParsed, onEdit, onNext }: Props)
   }
 
   return (
-    <div className="grid-side">
+    <div className="grid-resume">
       <div className="card">
         <div className="card-head">
           <div>

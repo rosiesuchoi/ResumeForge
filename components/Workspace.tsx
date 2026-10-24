@@ -58,6 +58,12 @@ export default function Workspace() {
     }
   }
 
+  /** Coach edits land on whichever version the user is working on (tailored/edited, else the parsed one). */
+  function updateActiveResume(next: Resume) {
+    if (edited || tailored) setEdited(next);
+    else setResume(next);
+  }
+
   function onNewResume(r: Resume) {
     setResume(r);
     setTailored(null);
@@ -161,6 +167,7 @@ export default function Workspace() {
             job={job}
             missing={tailored?.ats.after.missing ?? []}
             target={coachTarget}
+            onResumeChange={updateActiveResume}
             goResume={() => setTab("resume")}
           />
         )}

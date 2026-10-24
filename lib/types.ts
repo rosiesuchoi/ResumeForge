@@ -117,8 +117,19 @@ export type TailorResult = z.infer<typeof TailorResultSchema>;
 
 /* ---------- Coach ---------- */
 
+export const CoachHighlightSchema = z.object({
+  id: z
+    .string()
+    .describe("Line id exactly as shown in the indexed resume, e.g. 'experience.0.bullets.2' or 'skills.1'"),
+  kind: z.enum(["weak", "strong"]).describe("'weak' = weakest area (yellow), 'strong' = strongest area (green)"),
+  reason: z.string().describe("One short sentence on why this line is weak or strong"),
+});
+
 export const CoachReportSchema = z.object({
   overall: z.string().describe("2-4 sentence honest overall assessment"),
+  highlights: z
+    .array(CoachHighlightSchema)
+    .describe("2-3 weakest lines and 1-2 strongest lines of the resume, each referenced by line id"),
   strengths: z.array(z.string()),
   improvements: z.array(
     z.object({
@@ -150,6 +161,26 @@ export const CoachReportSchema = z.object({
   }),
 });
 export type CoachReport = z.infer<typeof CoachReportSchema>;
+
+/** A coach highlight as the browser stores it: `text` snapshots the line so the mark drops off once that line is edited. */
+export type CoachHighlight = z.infer<typeof CoachHighlightSchema> & { text: string };
+export type CoachReportView = Omit<CoachReport, "highlights"> & { highlights: CoachHighlight[] };
+
+/** The follow-up chat returns a reply plus optional edits the app applies to the resume. */
+export const ChatReplySchema = z.object({
+  reply: z.string().describe("Markdown reply to the candidate, under ~200 words"),
+  edits: z
+    .array(
+      z.object({
+        id: z.string().describe("Line id from the indexed resume"),
+        after: z.string().describe("The complete new text of that one line"),
+        reason: z.string().describe("One short phrase: what improved"),
+      }),
+    )
+    .describe("Resume lines to rewrite. Empty array unless the candidate asked to improve/change the resume."),
+});
+export type ChatEdit = { id: string; section: string; before: string; after: string; reason: string };
+export type ChatResponse = { reply: string; edits: ChatEdit[] };
 
 /* ---------- Job board ---------- */
 

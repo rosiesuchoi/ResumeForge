@@ -167,7 +167,7 @@ export default function TailorPanel({ resume, job, tailored, edited, setEdited, 
         )}
       </div>
 
-      <div className="grid-side">
+      <div className="grid-resume">
         <div className="card">
           <div className="card-head">
             <div className="seg" role="tablist">

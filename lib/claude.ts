@@ -30,7 +30,10 @@ type Content = Anthropic.Messages.MessageParam["content"];
  */
 export async function askStructured<S extends z.ZodType>(opts: {
   system: string;
-  content: Content;
+  /** Single user turn. Ignored when `messages` is given. */
+  content?: Content;
+  /** Full multi-turn history (must start and end with a user turn). */
+  messages?: Anthropic.Messages.MessageParam[];
   schema: S;
   maxTokens?: number;
   effort?: "low" | "medium" | "high";
@@ -39,7 +42,7 @@ export async function askStructured<S extends z.ZodType>(opts: {
     model: MODEL,
     max_tokens: opts.maxTokens ?? 8000,
     system: opts.system,
-    messages: [{ role: "user", content: opts.content }],
+    messages: opts.messages ?? [{ role: "user", content: opts.content ?? "" }],
     output_config: { format: zodOutputFormat(opts.schema), ...(opts.effort ? { effort: opts.effort } : {}) },
   });
   const msg = await stream.finalMessage();
